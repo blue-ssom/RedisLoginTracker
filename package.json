@@ -1,0 +1,17 @@
+{
+  "name": "week6",
+  "version": "1.0.0",
+  "description": "백엔드 서버 과정 숙제 때 사용하는 프로젝트",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "유소미",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "redis": "^4.6.13"
+  }
+}
