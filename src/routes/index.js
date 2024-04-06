@@ -80,22 +80,21 @@ router.post("/stats", async(req,res) => {
         // 오늘 로그인한 사용자 수를 가져오기
         const todayLoginCount = await redis.zCard(`user_logins:${today}`);
 
-
-        // 최신순으로 최대 5명까지 가져오기
-        // 0 시작 인덱스 4 끝 인덱스
-        const recentLogins = await redis.zRange(`user_logins:${today}`, 0, 4, 'WITHSCORES');
-
-        // 가장 최근 로그인이 가장 위로 오도록 배열을 역순으로 정렬
-        recentLogins.reverse();
-        console.log(recentLogins);
-
-
         // 모든 날짜에 대한 키 패턴 정의
         const keyPattern = 'user_logins:*';
 
         // 키 패턴을 사용하여 모든 날짜의 키를 가져옴
         const keys = await redis.keys(keyPattern);
         console.log('Matching keys:', keys);
+
+        // 날짜를 추출하여 정렬
+        const sortedKeys = keys.sort((a, b) => {
+            const dateA = new Date(a.split(':')[1]);
+            const dateB = new Date(b.split(':')[1]);
+            return dateA - dateB;
+        });
+        sortedKeys.reverse();
+        console.log('Matching keys after sorting:', sortedKeys);
         
         // 모든 날짜의 로그인 사용자 수
         let totalLoginsCount = 0;
@@ -103,21 +102,29 @@ router.post("/stats", async(req,res) => {
             const count = await redis.zCard(key);
             totalLoginsCount += count;
         }
-        console.log('Total logins count:', totalLoginsCount);
 
-        // 모든 사용자를 저장할 Set 초기화
-        const allUsers = new Set();
-        // 각 키에 대해 멤버들을 가져와서 최근 로그인한 사용자를 Set에 추가
-        for (const key of keys) {
-            const members = await redis.zRange(key, 0, -1);
-            for (const user of members) {
-                allUsers.add(user);
+        // 최근 로그인 사용자를 저장할 리스트 초기화
+        const recentLoginUsers = [];
+
+        // 각 키에 대해 멤버들을 가져와서 최근 로그인한 사용자를 리스트에 추가
+        for (const key of sortedKeys) {
+            console.log(`Key: ${key}`);
+            const members = await redis.zRange(key, 0, -1, 'WITHSCORES');
+            members.reverse()
+            console.log(`Members: ${members}`);
+            // members 배열에서 홀수 인덱스에는 사용자 이름이 저장되어 있음
+            for (let i = 0; i < members.length; i ++) {
+                const user = members[i];
+                recentLoginUsers.push(user);
             }
         }
+        console.log(recentLoginUsers);
 
-        // 최대 5명의 사용자만 선택
-        const top5Users = [...allUsers].slice(0, 5);
-        top5Users.reverse();
+       // 중복 제거
+        const uniqueUsers = Array.from(new Set(recentLoginUsers));
+
+        // 순서를 유지하면서 최대 5명의 사용자 선택
+        const top5Users = uniqueUsers.slice(0, 5);
         console.log('Top 5 users:', top5Users);
 
         result.success = 'true';
@@ -135,35 +142,5 @@ router.post("/stats", async(req,res) => {
         res.send(result)
     }
 })
-
-// 그 날 로그인한 수를 히스토리로 저장 + 그 날 로그인한 수 초기화
-// 매일 밤 자정에 실행되게끔 ( 패키지 상관 없 )
-// 1분 후에 실행되도록 설정
-setTimeout(async () => {
-    console.log("1 minute has passed. Performing my task...");
-    await redis.connect()
-     // 어제 날짜를 가져옴 (YYYY-MM-DD 형식)
-     const yesterday = new Date();
-     yesterday.setDate(yesterday.getDate() - 1);
-     console.log("Yesterday:", yesterday);
-
-     const yesterdayString = yesterday.toISOString().slice(0, 10);
-     console.log("Yesterday String:", yesterdayString);
- 
-     try {
-         // 어제 로그인한 사용자 수를 가져옴
-         const loginCount = await redis.zCard(`user_logins:${yesterdayString}`);
-         console.log("Login count:", loginCount);
- 
-         // 어제 로그인 히스토리로 저장
-         await redis.set(`login_history:${yesterdayString}`, loginCount);
- 
-        // 어제 로그인 히스토리를 가져옴
-        const loginHistory = await redis.get(`login_history:${yesterdayString}`);
-        console.log(`Login history for ${yesterdayString}:`, loginHistory);
-     } catch (error) {
-         console.error('Error saving login history:', error);
-     }
-},10 * 1000); // 10초를 밀리초로 변환하여 설정
 
 module.exports = router
